@@ -100,6 +100,37 @@ def review(db: sqlite3.Connection, row: sqlite3.Row, result: str, now: int) -> s
     return get(db, row["id"])
 
 
+def study_batch(db: sqlite3.Connection, count: int) -> list[dict]:
+    """Words for an on-demand study session: due ones first, then the soonest due, mastered last."""
+    rows = db.execute("SELECT * FROM vocab_words ORDER BY due_at IS NULL, due_at ASC, id ASC LIMIT ?", (count,))
+    return [to_json(r) for r in rows]
+
+
+def study_review(db: sqlite3.Connection, row: sqlite3.Row, result: str, now: int) -> tuple[sqlite3.Row, bool]:
+    """Record an answer given in an on-demand session. Returns (word, schedule_changed).
+
+    A word that is due is graded as a normal review. A word studied ahead of time
+    keeps its schedule, unless it was forgotten: then it starts over.
+    """
+    if result not in srs.GRADES:
+        raise ValueError(f"unknown grade: {result}")
+    mastered = row["stage"] >= srs.MASTERED
+    if not mastered and row["due_at"] <= now:
+        return review(db, row, result, now), True
+    changed = result == "forgot"
+    if changed:
+        db.execute(
+            "UPDATE vocab_words SET stage = 0, due_at = ?, last_reviewed_at = ?, lapses = lapses + 1 WHERE id = ?",
+            (srs.first_due(now), now, row["id"]),
+        )
+    db.execute(
+        "INSERT INTO vocab_reviews (word_id, reviewed_at, grade, stage_before, stage_after) VALUES (?, ?, ?, ?, ?)",
+        (row["id"], now, "study:" + result, row["stage"], 0 if changed else row["stage"]),
+    )
+    db.commit()
+    return get(db, row["id"]), changed
+
+
 def reset(db: sqlite3.Connection, word_id: int, now: int) -> sqlite3.Row:
     db.execute("UPDATE vocab_words SET stage = 0, due_at = ? WHERE id = ?", (srs.first_due(now), word_id))
     db.commit()

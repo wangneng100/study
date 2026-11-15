@@ -8,7 +8,7 @@ from app.core.db import get_db
 from app.services import translation
 from app.services.translation import Entry, TranslationError
 
-from . import store
+from . import quiz, store
 
 bp = Blueprint("vocab", __name__, template_folder="templates", static_folder="static")
 
@@ -43,6 +43,20 @@ def index():
     return render_template("vocab/index.html")
 
 
+@bp.get("/study")
+def study():
+    return render_template("vocab/study.html")
+
+
+@bp.get("/api/study")
+def study_words():
+    """Pick words for an on-demand session and write quiz questions for them: ?n=10"""
+    count = max(1, min(request.args.get("n", default=10, type=int) or 10, 200))
+    db = get_db()
+    items = quiz.session(store.study_batch(db, count), store.all_words(db))
+    return jsonify({"items": items, "steps": srs.steps_json(), "now": srs.now_ms()})
+
+
 @bp.get("/api/words")
 def list_words():
     return jsonify({
@@ -58,6 +72,28 @@ def add_words():
     db = get_db()
     now = srs.now_ms()
 
+    # An already-translated entry was confirmed by the user: store it directly.
+    if isinstance(data.get("entry"), dict):
+        e_data = data["entry"]
+        word = re.sub(r"\s+", " ", str(e_data.get("word", ""))).strip()[:80]
+        if not word:
+            return error("先输入一个单词。", 400)
+        row = store.find(db, word)
+        if row:
+            return jsonify({"added": [], "existing": [store.to_json(row)], "failed": [], "suggestions": [], "notice": ""})
+        entry = Entry(
+            word=word,
+            meaning=str(e_data.get("meaning", ""))[:400],
+            lang=str(e_data.get("lang", ""))[:12],
+            phonetic=str(e_data.get("phonetic", ""))[:120],
+            pos=str(e_data.get("pos", ""))[:40],
+            example=str(e_data.get("example", ""))[:400],
+            example_zh=str(e_data.get("exampleZh", ""))[:400],
+            source=str(e_data.get("source", "manual")),
+        )
+        row = store.add(db, entry, now)
+        return jsonify({"added": [store.to_json(row)], "existing": [], "failed": [], "suggestions": [], "notice": ""})
+
     # The user typed the meaning themselves: store one word without a lookup.
     if isinstance(data.get("meaning"), str) and data["meaning"].strip():
         word = re.sub(r"\s+", " ", str(data.get("word", ""))).strip()[:80]
@@ -65,9 +101,9 @@ def add_words():
             return error("先输入一个单词。", 400)
         row = store.find(db, word)
         if row:
-            return jsonify({"added": [], "existing": [store.to_json(row)], "failed": [], "notice": ""})
+            return jsonify({"added": [], "existing": [store.to_json(row)], "failed": [], "suggestions": [], "notice": ""})
         row = store.add(db, Entry(word=word, meaning=data["meaning"].strip()[:400], source="manual"), now)
-        return jsonify({"added": [store.to_json(row)], "existing": [], "failed": [], "notice": ""})
+        return jsonify({"added": [store.to_json(row)], "existing": [], "failed": [], "suggestions": [], "notice": ""})
 
     words = parse_entries(str(data.get("text", "")))
     if not words:
@@ -76,7 +112,8 @@ def add_words():
     known = {row["key"] for row in existing}
     fresh = [w for w in words if store.word_key(w) not in known]
 
-    added, failed, notice = [], [], ""
+    added, failed, suggestions, notice = [], [], [], ""
+    force = bool(data.get("force"))
     if fresh:
         try:
             result = do_lookup(fresh)
@@ -88,17 +125,36 @@ def add_words():
             if entry is None:
                 failed.append(word)
                 continue
-            row = store.find(db, entry.word)   # the provider may have corrected the spelling
+            if force and store.word_key(entry.word) != store.word_key(word):
+                entry.word = word
+            row = store.find(db, entry.word)   # check if already in db
             if row:
                 if row["key"] not in known:
                     known.add(row["key"])
                     existing.append(row)
+                continue
+            if not force and store.word_key(entry.word) != store.word_key(word):
+                suggestions.append({
+                    "original": word,
+                    "suggested": entry.word,
+                    "entry": {
+                        "word": entry.word,
+                        "meaning": entry.meaning,
+                        "lang": entry.lang,
+                        "phonetic": entry.phonetic,
+                        "pos": entry.pos,
+                        "example": entry.example,
+                        "exampleZh": entry.example_zh,
+                        "source": entry.source,
+                    },
+                })
                 continue
             added.append(store.add(db, entry, now))
     return jsonify({
         "added": [store.to_json(r) for r in added],
         "existing": [store.to_json(r) for r in existing],
         "failed": failed,
+        "suggestions": suggestions,
         "notice": notice,
     })
 
@@ -109,8 +165,14 @@ def review_word(word_id: int):
     row = store.get(db, word_id)
     if row is None:
         return error("这个词已经不在单词本里了。", 404)
-    result = (request.get_json(silent=True) or {}).get("grade")
-    if result not in srs.GRADES or row["stage"] >= srs.MASTERED:
+    data = request.get_json(silent=True) or {}
+    result = data.get("grade")
+    if result not in srs.GRADES:
+        return error("这次复习没法记录。", 400)
+    if data.get("study"):   # answered in an on-demand session, possibly ahead of schedule
+        word, changed = store.study_review(db, row, result, srs.now_ms())
+        return jsonify({"word": store.to_json(word), "scheduleChanged": changed})
+    if row["stage"] >= srs.MASTERED:
         return error("这次复习没法记录。", 400)
     return jsonify({"word": store.to_json(store.review(db, row, result, srs.now_ms()))})
 

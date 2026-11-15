@@ -13,6 +13,7 @@
     filter: "all", q: "", open: null, confirmDel: null,
     currentId: null, revealed: false, busy: false, cardError: "",
     adding: false, lastAdded: [], speakKey: null, working: null,
+    suggestions: [],
   };
   let pendingFocus = null;
   let lastPointer = 0;
@@ -76,7 +77,9 @@
     pendingFocus = null;
     const now = Date.now();
     renderHeader(now);
+    renderSuggestions();
     renderAdded();
+    renderStudy();
     renderCard(now);
     renderDays(now);
     renderChips(now);
@@ -101,6 +104,19 @@
       : t.active === "onemin" ? "翻译和例句由 1min.ai 生成。"
       : t.hasOneMinKey ? "当前设置为只用 Google 翻译。"
       : "当前用 Google 翻译，例句来自词典，有些词没有。在 .env 里填上 ONEMIN_API_KEY 后会改用 1min.ai 生成释义和例句。";
+  }
+
+  // "Start studying": pick how many words, then go to the study page.
+  function renderStudy() {
+    const total = state.words.length;
+    $("study-btn").disabled = total === 0;
+    $("study-hint").textContent = total ? "不用等复习时间，现在就学一组。" : "先记下几个单词，才能开始学习。";
+    if (!total) $("study-pick").hidden = true;
+    const base = $("vocab").dataset.study;
+    const counts = [5, 10, 20, 50].filter((n) => n < total);
+    fill($("study-counts"),
+      counts.map((n) => h("a", { class: "chip", href: `${base}?n=${n}` }, `${n} 个`)),
+      h("a", { class: "chip", href: `${base}?n=${total}` }, `全部 ${total} 个`));
   }
 
   function speakBtn(w, text, key) {
@@ -331,25 +347,102 @@
     el.textContent = text || "";
   }
 
-  async function addWords() {
+  function renderSuggestions() {
+    const box = $("suggestions");
+    if (!box) return;
+    if (!state.suggestions || !state.suggestions.length) { fill(box); return; }
+    fill(box, state.suggestions.map((s, idx) => {
+      const entry = s.entry || {};
+      return h("div", { class: "suggest-card", role: "alert" },
+        h("div", { class: "suggest-head" },
+          h("p", { class: "suggest-title" },
+            "你输入的是 ",
+            h("span", { class: "suggest-bad" }, s.original),
+            "，是否是想输入 ",
+            h("strong", { class: "suggest-good" }, s.suggested),
+            "？"
+          ),
+          entry.meaning && h("p", { class: "suggest-preview" },
+            entry.phonetic && h("span", { class: "phon" }, entry.phonetic + " "),
+            entry.pos && h("span", { class: "pos" }, entry.pos + " "),
+            entry.meaning
+          )
+        ),
+        h("div", { class: "suggest-acts" },
+          h("button", {
+            type: "button",
+            class: "btn primary",
+            "data-fk": "accept-sug:" + idx,
+            onclick: () => acceptSuggestion(s),
+          }, `是，记下 ${s.suggested}`),
+          h("button", {
+            type: "button",
+            class: "btn ghost",
+            onclick: () => forceOriginal(s),
+          }, `否，坚持记 ${s.original}`),
+          h("button", {
+            type: "button",
+            class: "btn ghost",
+            style: "color: var(--ink-3); margin-left: auto;",
+            onclick: () => dismissSuggestion(s),
+          }, "取消")
+        )
+      );
+    }));
+  }
+
+  async function acceptSuggestion(s) {
+    state.suggestions = state.suggestions.filter((x) => x !== s);
+    renderSuggestions();
+    await addWords({ entry: s.entry });
+    $("add-input").value = "";
+  }
+
+  async function forceOriginal(s) {
+    state.suggestions = state.suggestions.filter((x) => x !== s);
+    renderSuggestions();
+    await addWords({ text: s.original, force: true });
+    $("add-input").value = "";
+  }
+
+  function dismissSuggestion(s) {
+    state.suggestions = state.suggestions.filter((x) => x !== s);
+    renderSuggestions();
+  }
+
+  async function addWords(payload) {
     if (state.adding) return;
     const input = $("add-input"), meaningEl = $("add-meaning");
-    const text = input.value.trim();
-    const meaning = meaningEl.hidden ? "" : meaningEl.value.trim();
-    if (!text) { setStatus("err", "先输入一个单词。"); return; }
+    let body;
+    if (payload) {
+      body = payload;
+    } else {
+      const text = input.value.trim();
+      const meaning = meaningEl.hidden ? "" : meaningEl.value.trim();
+      if (!text) { setStatus("err", "先输入一个单词。"); return; }
+      body = meaning ? { word: text, meaning } : { text };
+    }
     state.adding = true; $("add-btn").disabled = true;
-    setStatus("", meaning ? "正在保存…" : "正在翻译…");
+    setStatus("", "正在翻译…");
     try {
-      const d = await api("POST", API, meaning ? { word: text, meaning } : { text });
+      const d = await api("POST", API, body);
       d.added.forEach(putWord);
       state.lastAdded = [...d.added, ...d.existing].map((w) => w.id);
-      input.value = d.failed.join("\n");
-      meaningEl.value = ""; meaningEl.hidden = true;
+      if (d.suggestions && d.suggestions.length) {
+        state.suggestions = d.suggestions;
+      } else if (!payload) {
+        state.suggestions = [];
+      }
+      if (!payload) {
+        input.value = d.failed.join("\n");
+        meaningEl.value = ""; meaningEl.hidden = true;
+      }
       const parts = [];
       if (d.added.length) parts.push(`已记下 ${d.added.length} 个词，${STEPS[0].label}后第一次复习。`);
       if (d.existing.length) parts.push(`${d.existing.length} 个已经在单词本里。`);
       if (d.failed.length) parts.push(`${d.failed.length} 个没查到，留在输入框里了。`);
       if (d.notice) parts.push(d.notice);
+      if (d.suggestions && d.suggestions.length) parts.push("疑似拼写有误，请确认建议。");
       setStatus(d.failed.length || d.notice ? "err" : "ok", parts.join(" "));
     } catch (e) {
       if (e.data && e.data.manual) {
@@ -377,6 +470,11 @@
   $("add-form").addEventListener("submit", (e) => { e.preventDefault(); addWords(); });
   $("add-input").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); addWords(); }
+  });
+  $("study-btn").addEventListener("click", () => {
+    const pick = $("study-pick");
+    pick.hidden = !pick.hidden;
+    $("study-btn").setAttribute("aria-expanded", String(!pick.hidden));
   });
   $("q").addEventListener("input", (e) => { state.q = e.target.value; renderList(Date.now()); });
   $("due-pill").addEventListener("click", () => {

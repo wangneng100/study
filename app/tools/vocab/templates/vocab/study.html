@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}即时学习 · 单词本{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('vocab.static', filename='vocab.css') }}">
+{% endblock %}
+{% block content %}
+<div id="vocab" data-api="{{ url_for('vocab.list_words') }}" data-batch="{{ url_for('vocab.study_words') }}"
+     data-home="{{ url_for('vocab.index') }}" data-study="{{ url_for('vocab.study') }}" hidden></div>
+
+<header class="top">
+  <div>
+    <p class="eyebrow">单词本</p>
+    <h1>即时学习</h1>
+  </div>
+  <a class="btn" href="{{ url_for('vocab.index') }}">结束，回单词本</a>
+</header>
+
+<section aria-label="学习">
+  <div class="study-bar" id="bar" hidden>
+    <span id="bar-text"></span>
+    <span class="track" aria-hidden="true"><span class="fill" id="bar-fill"></span></span>
+  </div>
+  <div class="card" id="card"></div>
+  <p class="hint">题目有选择、拼写、例句填空和听写。第一次就答对算“记得”，用了提示或拼写差一点算“模糊”，答错算“忘了”。答错的词会换一种题再考，直到答对。已到复习时间的词按正常复习计分；提前学的词不改变复习计划，只有答错才会从头再学。</p>
+</section>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('vocab.static', filename='study.js') }}"></script>
+{% endblock %}

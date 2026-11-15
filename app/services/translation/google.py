@@ -55,7 +55,15 @@ class GoogleTranslate(Provider):
 
     def _one(self, word: str) -> Optional[Entry]:
         to_english = bool(CJK.search(word))
-        data = self._call(word, "en" if to_english else "zh-CN", ["t", "bd", "rm", "ex", "md"])
+        data = self._call(word, "en" if to_english else "zh-CN", ["t", "bd", "rm", "ex", "md", "qc"])
+
+        # Check for query correction (Google suggests a spelling fix)
+        corrected = at(data, 7, 1) or at(data, 7, 0)
+        corrected_word = word
+        if isinstance(corrected, str):
+            clean = TAG.sub("", corrected).strip()
+            if clean and clean.lower() != word.lower():
+                corrected_word = clean
 
         # [0]: translated segments; the last one carries the source romanization at [3].
         segments = [seg for seg in (at(data, 0) or []) if isinstance(seg, list)]
@@ -94,7 +102,7 @@ class GoogleTranslate(Provider):
 
         lang = at(data, 2)
         return Entry(
-            word=word,
+            word=corrected_word,
             meaning=meaning[:400],
             lang=lang if isinstance(lang, str) else "",
             phonetic=f"/{phonetic}/" if phonetic and not to_english else "",

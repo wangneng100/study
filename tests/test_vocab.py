@@ -14,7 +14,10 @@ def fake_lookup(words, _config):
     if "boom" in words:
         raise TranslationError("连不上翻译服务。")
     return LookupResult([
-        None if w == "zzzz" else Entry(word="receive" if w == "recieve" else w, meaning="释义:" + w, lang="en", source="fake")
+        None if w == "zzzz" else Entry(
+            word="receive" if w == "recieve" else ("Wednesday" if w == "Wedesday" else w),
+            meaning="释义:" + w, lang="en", source="fake"
+        )
         for w in words
     ])
 
@@ -54,6 +57,25 @@ class VocabApiTest(unittest.TestCase):
         self.assertEqual(r["added"], [])
         self.assertEqual([w["word"] for w in r["existing"]], ["receive"])
 
+    def test_spelling_suggestion_and_confirmation(self):
+        # Adding a misspelled word returns a suggestion instead of saving immediately
+        r = self.add("Wedesday").get_json()
+        self.assertEqual(r["added"], [])
+        self.assertEqual(len(r["suggestions"]), 1)
+        s = r["suggestions"][0]
+        self.assertEqual(s["original"], "Wedesday")
+        self.assertEqual(s["suggested"], "Wednesday")
+
+        # Confirming with the suggested entry saves it
+        r2 = self.c.post("/vocab/api/words", json={"entry": s["entry"]}).get_json()
+        self.assertEqual(len(r2["added"]), 1)
+        self.assertEqual(r2["added"][0]["word"], "Wednesday")
+
+        # Force saving the original misspelling saves Wedesday
+        r3 = self.c.post("/vocab/api/words", json={"text": "Wedesday", "force": True}).get_json()
+        self.assertEqual(len(r3["added"]), 1)
+        self.assertEqual(r3["added"][0]["word"], "Wedesday")
+
     def test_outage_offers_manual_entry(self):
         r = self.add("boom")
         self.assertEqual(r.status_code, 502)
@@ -78,12 +100,69 @@ class VocabApiTest(unittest.TestCase):
         self.assertEqual(self.c.delete(url).status_code, 200)
         self.assertEqual(self.c.post(url + "/reset").status_code, 404)
 
+    def test_study_session(self):
+        self.assertEqual(self.c.get("/vocab/study?n=5").status_code, 200)
+        ids = [w["id"] for w in self.add("apple, banana, cherry").get_json()["added"]]
+        self.assertEqual(len(self.c.get("/vocab/api/study?n=2").get_json()["items"]), 2)
+        items = self.c.get("/vocab/api/study?n=99").get_json()["items"]
+        self.assertEqual(len(items), 3)
+        for item in items:
+            for q in item["questions"]:
+                if q["type"] == "choose_meaning":
+                    self.assertEqual(q["options"][q["answer"]], item["word"]["meaning"])
+                    self.assertEqual(len(set(q["options"])), 3)
+                elif q["type"] == "choose_word":
+                    self.assertEqual(q["options"][q["answer"]], item["word"]["word"])
+                else:
+                    self.assertIn(item["word"]["word"], q["accept"])
+
+        # Studied before it is due: remembering it leaves the schedule alone ...
+        url = f"/vocab/api/words/{ids[0]}/review"
+        r = self.c.post(url, json={"grade": "got", "study": True}).get_json()
+        self.assertFalse(r["scheduleChanged"])
+        self.assertEqual((r["word"]["stage"], r["word"]["reviews"]), (0, 0))
+        # ... but forgetting it restarts the word.
+        self.c.post(url, json={"grade": "got"})
+        r = self.c.post(url, json={"grade": "forgot", "study": True}).get_json()
+        self.assertTrue(r["scheduleChanged"])
+        self.assertEqual((r["word"]["stage"], r["word"]["lapses"]), (0, 1))
+
+        # A mastered word can be studied too, and only "forgot" brings it back.
+        url = f"/vocab/api/words/{ids[1]}/review"
+        for _ in range(srs.MASTERED):
+            self.c.post(url, json={"grade": "got"})
+        r = self.c.post(url, json={"grade": "fuzzy", "study": True}).get_json()
+        self.assertEqual((r["scheduleChanged"], r["word"]["stage"]), (False, srs.MASTERED))
+        self.assertEqual(self.c.get("/vocab/api/study?n=3").get_json()["items"][-1]["word"]["id"], ids[1])
+        r = self.c.post(url, json={"grade": "forgot", "study": True}).get_json()
+        self.assertEqual((r["word"]["stage"], r["word"]["dueAt"] is not None), (0, True))
+
     def test_requests_from_other_sites_are_refused(self):
         r = self.c.post("/vocab/api/words", json={"text": "apple"}, headers={"Origin": "https://example.com"})
         self.assertEqual(r.status_code, 403)
         self.assertEqual(self.c.get("/vocab/api/words", headers={"Host": "evil.example"}).status_code, 403)
         r = self.c.post("/vocab/api/words", data="text=apple", content_type="application/x-www-form-urlencoded")
         self.assertEqual(r.status_code, 415)
+
+
+class QuizTest(unittest.TestCase):
+    def word(self, i, word, meaning, example=""):
+        return {"id": i, "word": word, "meaning": meaning, "example": example}
+
+    def test_question_variants(self):
+        import random
+        from app.tools.vocab import quiz
+        run = self.word(1, "run", "跑", "She runs every morning.")
+        pool = [run, self.word(2, "walk", "走"), self.word(3, "stroll", "走"), self.word(4, "sit", "坐")]
+        by_type = {q["type"]: q for q in quiz.build(run, pool, random.Random(1))}
+        self.assertEqual(set(by_type), {"choose_meaning", "choose_word", "cloze", "spell", "listen"})
+        self.assertEqual(sorted(by_type["choose_meaning"]["options"]), sorted(["跑", "走", "坐"]))  # no duplicate meanings
+        self.assertEqual(by_type["cloze"]["sentence"], "She _____ every morning.")
+        self.assertEqual(by_type["cloze"]["accept"], ["run", "runs"])
+
+        # A notebook with a single word still gets typed questions, but no multiple choice.
+        alone = {q["type"] for q in quiz.build(run, [run], random.Random(1))}
+        self.assertEqual(alone, {"cloze", "spell", "listen"})
 
 
 class ProviderParsingTest(unittest.TestCase):

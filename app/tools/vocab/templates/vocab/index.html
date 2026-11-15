@@ -4,7 +4,7 @@
 <link rel="stylesheet" href="{{ url_for('vocab.static', filename='vocab.css') }}">
 {% endblock %}
 {% block content %}
-<div id="vocab" data-api="{{ url_for('vocab.list_words') }}" hidden></div>
+<div id="vocab" data-api="{{ url_for('vocab.list_words') }}" data-study="{{ url_for('vocab.study') }}" hidden></div>
 
 <header class="top">
   <div>
@@ -29,8 +29,21 @@
       <button type="submit" class="btn primary" id="add-btn">翻译并记下</button>
     </div>
   </form>
+  <div class="suggestions" id="suggestions"></div>
   <p class="hint" id="translator"></p>
   <div class="added" id="added"></div>
+</section>
+
+<section aria-labelledby="study-h">
+  <h2 class="sec-h" id="study-h">即时学习</h2>
+  <div class="study-start">
+    <button type="button" class="btn primary" id="study-btn" aria-expanded="false" aria-controls="study-pick">开始学习</button>
+    <p class="hint" id="study-hint">不用等复习时间，现在就学一组。</p>
+  </div>
+  <div class="study-pick" id="study-pick" hidden>
+    <p class="mini-h">这次学几个？</p>
+    <div class="chips" id="study-counts"></div>
+  </div>
 </section>
 
 <section id="review" aria-labelledby="rev-h">
