@@ -1,0 +1,78 @@
+/* Shared look for every tool: palette, type, navigation, buttons.
+   Tools add their own stylesheet on top and should only use these tokens for color. */
+:root {
+  --paper: #EEF1F6;
+  --sheet: #FFFFFF;
+  --ink: #18203A;
+  --ink-2: #56607D;
+  --ink-3: #8088A0;
+  --line: #DCE1ED;
+  --rule: #BFCBE8;
+  --blue: #2747C7;
+  --blue-soft: #E5EAFB;
+  --on-blue: #FFFFFF;
+  --red: #C02B3A;
+  --red-soft: #FBE9EB;
+  --amber: #8A5200;
+  --amber-soft: #FBF0DC;
+  --green: #17694A;
+  --green-soft: #E2F3EA;
+  --font-word: "Literata", Georgia, "Songti SC", "Noto Serif SC", serif;
+  --font-ui: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #0F131D; --sheet: #181E2C; --ink: #E7EAF3; --ink-2: #A3ABC2; --ink-3: #79829C;
+    --line: #283044; --rule: #36446A; --blue: #93A8FF; --blue-soft: #222C4D; --on-blue: #0F131D;
+    --red: #F0717B; --red-soft: #3A1E25; --amber: #E0A44A; --amber-soft: #36290F;
+    --green: #5CC596; --green-soft: #14301F; color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.6 var(--font-ui); padding: 0 16px 64px; }
+h1, h2, h3, p, ul, ol { margin: 0; padding: 0; }
+ul, ol { list-style: none; }
+button, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+.site-nav { max-width: 720px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 4px 18px; padding: 14px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.site-nav a { text-decoration: none; color: var(--ink-2); padding: 2px 0; }
+.site-nav a[aria-current="page"] { color: var(--ink); font-weight: 600; box-shadow: 0 2px 0 var(--blue); }
+.site-nav .brand { margin-right: auto; }
+
+.app { max-width: 720px; margin: 0 auto; padding-top: 26px; display: flex; flex-direction: column; gap: 30px; }
+.top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 10px 20px; }
+.eyebrow { font-size: 12.5px; color: var(--ink-3); letter-spacing: .12em; }
+h1 { font-size: 30px; line-height: 1.2; font-weight: 700; }
+.sec-h { font-size: 13px; font-weight: 600; color: var(--ink-2); letter-spacing: .08em; }
+.mini-h { font-size: 12.5px; font-weight: 400; color: var(--ink-3); }
+section { display: flex; flex-direction: column; gap: 12px; }
+
+.btn { border: 1px solid var(--line); background: var(--sheet); border-radius: 10px; padding: 8px 14px; font-size: 14px; white-space: nowrap; }
+.btn.primary { background: var(--blue); border-color: var(--blue); color: var(--on-blue); font-weight: 600; padding: 10px 18px; flex: none; }
+.btn.ghost { background: none; border-color: transparent; color: var(--ink-2); padding: 6px 8px; }
+.btn.danger { color: var(--red); }
+.btn:disabled { opacity: .55; cursor: default; }
+.pill { border: 0; border-radius: 999px; padding: 6px 14px; background: var(--red-soft); color: var(--red); font-weight: 600; font-size: 13.5px; }
+.status { font-size: 13.5px; color: var(--ink-2); min-width: 0; }
+.status.err { color: var(--red); }
+.status.ok { color: var(--green); }
+.note { font-size: 13px; color: var(--amber); background: var(--amber-soft); border-radius: 8px; padding: 8px 12px; }
+.hint { font-size: 12.5px; color: var(--ink-3); }
+
+/* Home page */
+.tool-list { display: flex; flex-direction: column; gap: 12px; }
+.tool-card { display: flex; flex-direction: column; gap: 4px; padding: 18px 20px; background: var(--sheet); border: 1px solid var(--line); border-radius: 14px; text-decoration: none; }
+.tool-card:hover { border-color: var(--rule); }
+.tool-name { font-size: 19px; font-weight: 700; }
+.tool-desc { color: var(--ink-2); }
+.tool-status { font-size: 13px; color: var(--blue); font-variant-numeric: tabular-nums; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .btn, .pill { transition: filter .12s; }
+  .btn:not(:disabled):hover { filter: brightness(.96); }
+}

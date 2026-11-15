@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}学习工具{% endblock %}</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='base.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <nav class="site-nav" aria-label="工具">
+    <a href="{{ url_for('home') }}" class="brand"{% if request.endpoint == 'home' %} aria-current="page"{% endif %}>学习工具</a>
+    {% for tool in tools %}
+    <a href="/{{ tool.slug }}/"{% if request.blueprint == tool.slug %} aria-current="page"{% endif %}>{{ tool.name }}</a>
+    {% endfor %}
+  </nav>
+  <main class="app">
+    {% block content %}{% endblock %}
+  </main>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

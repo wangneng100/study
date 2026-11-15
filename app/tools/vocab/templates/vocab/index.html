@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}单词本 · 学习工具{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('vocab.static', filename='vocab.css') }}">
+{% endblock %}
+{% block content %}
+<div id="vocab" data-api="{{ url_for('vocab.list_words') }}" hidden></div>
+
+<header class="top">
+  <div>
+    <p class="eyebrow">艾宾浩斯复习法</p>
+    <h1>单词本</h1>
+  </div>
+  <div class="top-side">
+    <p class="stats" id="stats"></p>
+    <button type="button" class="pill" id="due-pill" hidden></button>
+  </div>
+</header>
+
+<p class="note" id="note" role="status" hidden></p>
+
+<section aria-labelledby="add-h">
+  <h2 class="sec-h" id="add-h">记一个新词</h2>
+  <form class="add-form" id="add-form">
+    <textarea id="add-input" rows="2" aria-label="不会的单词或短语" placeholder="输入不会的单词或短语，可以一次发多个，用逗号或换行分开"></textarea>
+    <input id="add-meaning" type="text" aria-label="中文释义" placeholder="自己写中文释义（留空则再试一次自动翻译）" hidden>
+    <div class="add-foot">
+      <p class="status" id="add-status" role="status"></p>
+      <button type="submit" class="btn primary" id="add-btn">翻译并记下</button>
+    </div>
+  </form>
+  <p class="hint" id="translator"></p>
+  <div class="added" id="added"></div>
+</section>
+
+<section id="review" aria-labelledby="rev-h">
+  <h2 class="sec-h" id="rev-h">现在复习</h2>
+  <div class="card" id="card"></div>
+  <div class="forecast">
+    <h3 class="mini-h">未来 7 天要复习的词数</h3>
+    <ol class="days" id="days"></ol>
+  </div>
+</section>
+
+<section aria-labelledby="book-h">
+  <div class="book-head">
+    <h2 class="sec-h" id="book-h">全部单词</h2>
+    <input id="q" type="search" aria-label="搜索单词或释义" placeholder="搜索单词或释义">
+  </div>
+  <div class="chips" id="chips"></div>
+  <ul class="list" id="list"></ul>
+</section>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('vocab.static', filename='vocab.js') }}"></script>
+{% endblock %}

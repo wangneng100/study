@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="top">
+  <div>
+    <p class="eyebrow">本机运行</p>
+    <h1>学习工具</h1>
+  </div>
+</header>
+<ul class="tool-list">
+  {% for tool, status in cards %}
+  <li>
+    <a class="tool-card" href="/{{ tool.slug }}/">
+      <span class="tool-name">{{ tool.name }}</span>
+      <span class="tool-desc">{{ tool.description }}</span>
+      {% if status %}<span class="tool-status">{{ status }}</span>{% endif %}
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% endblock %}
